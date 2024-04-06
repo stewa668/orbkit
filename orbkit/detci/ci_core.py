@@ -140,7 +140,6 @@ def slice_jab(ij):
   '''  
   return cy_ci.get_jab(ij[0],ij[1],multici['zero'],multici['sing'],multici['molist'],multici['molistdrv'])
 
-
 def jab(zero,sing,molist,molistdrv,slice_length=1e4,numproc=1):
   r'''Computes the imaginary part of the electronic transition flux density on a grid.
 

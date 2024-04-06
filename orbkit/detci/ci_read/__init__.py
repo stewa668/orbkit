@@ -11,4 +11,5 @@ from .molpro import molpro_mcscf
 from .gaussian import gaussian_tddft
 
 __all__ = ['main_ci_read', 'molpro_mo_order_ci', 'psi4_detci', 'tmol_escf',
-           'tmol_tddft', 'gamess_cis', 'gamess_tddft', 'molpro_mcscf','gaussian_tddft']
+           'tmol_tddft', 'gamess_cis', 'gamess_tddft', 'gamess_guga', 'gamess_MOD', 
+           'molpro_mcscf','gaussian_tddft']

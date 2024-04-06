@@ -226,7 +226,7 @@ def gamess_guga(file_name,threshold=0.0,**kwargs):
     ci : list of CIinfo class instances
       See :ref:`Central Variables` for details.
   '''
-  display('\nReading data of GUGA calculation from GAMESS-US...')
+  display('\nReading data of TDDFT calculation from GAMESS-US...')
 
   ci = [[]]
   general_information = {'fileinfo': file_name,
@@ -246,143 +246,126 @@ def gamess_guga(file_name,threshold=0.0,**kwargs):
   state_coeffs = []
   state_OCCs = []
   
-  NUMCI = 0
-  NFZC = []
-  NMCC = []
-  NDOC = []
-  NAOS = []
-  NBOS = []
-  NALP = []
-  NVAL = []
-  NEXT = []
-  NFZV = []
-  nel = []
-  spin = []
-  
   for i,line in enumerate(flines):
+    thisline = line.split()
+        
     if STATE_ZONE:
-      thisline = line.split()
       if " STATE #" in line:
-        state_energies[-1].append(float(thisline[-1]))
-        temp_state_CSFs = []
-        temp_state_OCCs = []
-        temp_state_coeffs = []
-        continue
+          state_energies.append(float(thisline[-1]))
+          temp_state_CSFs = []
+          temp_state_OCCs = []
+          temp_state_coeffs = []
+          continue
       if len(thisline) == 3 and abs(float(thisline[1])) >= threshold:
-        temp_state_CSFs.append(int(thisline[0]))
-        temp_state_coeffs.append(float(thisline[1]))
-        temp = [int(x) for x in thisline[2]]
-        temp_state_OCCs.append(temp)
-        continue
+          temp_state_CSFs.append(int(thisline[0]))
+          temp_state_coeffs.append(float(thisline[1]))
+          temp = [int(x) for x in thisline[2]]
+          temp_state_OCCs.append(temp)
+          continue
       if " THE " in line:
-        state_CSFs[-1].append(temp_state_CSFs)
-        state_coeffs[-1].append(temp_state_coeffs)
-        state_OCCs[-1].append(temp_state_OCCs)
-        continue
-      if "STEP CPU TIME" in line:
-        STATE_ZONE = False
-        continue
-      
-    if "CI CALCULATION" in line:
-      NUMCI += 1
-      ci.append([])
-      state_energies.append([])
-      state_CSFs.append([])
-      state_coeffs.append([])
-      state_OCCs.append([])
-      NFZC.append(int(flines[i+14].split()[1]))
-      NDOC.append(int(flines[i+14].split()[3]))
-      NEXT.append(int(flines[i+14].split()[5]))
-      NMCC.append(int(flines[i+15].split()[1]))
-      NAOS.append(int(flines[i+15].split()[3]))
-      NFZV.append(int(flines[i+15].split()[5]))
-      NBOS.append(int(flines[i+16].split()[1]))
-      NALP.append(int(flines[i+17].split()[1]))
-      NVAL.append(int(flines[i+18].split()[1]))
-      nel.append( 2*(NFZC[-1]+NDOC[-1]+NMCC[-1]) + 1*(NAOS[-1]+NBOS[-1]+NALP[-1]))
-      spin.append( 1 + NALP[-1] ) 
+          state_CSFs.append(temp_state_CSFs)
+          state_coeffs.append(temp_state_coeffs)
+          state_OCCs.append(temp_state_OCCs)
+          continue
+      if " STEP CPU TIME" in line:
+          STATE_ZONE = False
+          break
+            
+    if " MULT  =" in line: # may need to be adjusted for every state
+      MULT = int(thisline[2])
       continue
-          
+    
+    if " NUMBER OF ELECTRONS " in line:
+      nel = int(thisline[4])
+      continue
+    
+    if " SPIN MULTIPLICITY " in line:
+      spin = int(thisline[3])
+      continue
+  
+    if "     NFZC=" in line:
+      NFZC=int(thisline[1])
+      NDOC=int(thisline[3])
+      NEXT=int(thisline[5])
+      continue
+    
+    if "     NMCC=" in line:
+      NMCC=int(thisline[1])
+      NAOS=int(thisline[3])
+      NFZV=int(thisline[5])
+      continue
+        
+    if "                 NBOS=" in line:
+      NBOS=int(thisline[1])
+      continue
+    
+    if "                 NALP=" in line:
+      NALP=int(thisline[1])
+      continue
+        
+    if "                 NVAL=" in line:
+      NVAL=int(thisline[1])
+      continue
+        
     if " NUMBER OF STATES REQUESTED =" in line:
       STATE_ZONE=True
-      numstates = int(line.split()[-1])
+      numstates = int(thisline[-1])
       continue
           
   fname.close()
-
-  NCORE = [sum(i) for i in zip(*[NFZC,NMCC])]
-  NACT = [sum(i) for i in zip(*[NDOC,NAOS,NBOS,NALP,NVAL,NEXT])] 
- 
-  CSFs_l = []
-  for stg_CSFs in state_CSFs:
-    CSFs = set()
-    for st_CSFs in stg_CSFs:
-      for c in st_CSFs:
-        CSFs.add(c)
-    CSFs_l.append(sorted(list(CSFs)))
+      
+  NCORE = NFZC + NMCC
+  NACT  = NDOC + NAOS + NBOS + NALP + NVAL
+  NOCC  = NCORE + NACT
   
-  CSFs = [{}]
+  CSFs = set()
+  for st_CSFs in state_CSFs:
+      for c in st_CSFs:
+          CSFs.add(c)
+  CSFs_l = sorted(list(CSFs))
+  
+  CSFs = {}
   
   fname = open(file_name, 'r')
   
   if isinstance(fname, TextIOWrapper):
     flines = fname.readlines()
       
-  CI_index = 0
-  SKIP = 0
-
   for i,line in enumerate(flines):
-    if "CI CALCULATION" in line:
-      SKIP = 0
-    if SKIP:
-      continue    
     if  " CASE VECTOR =" in line:
-      if int(line.split()[3]) == CSFs_l[CI_index][0]:
-        CSFs[CI_index][CSFs_l[CI_index][0]] = [int(x) for x in flines[i+1].split()[0]]
-        CSFs_l[CI_index].pop(0)
-        if len(CSFs_l[CI_index])==0:
-          CI_index += 1
-          CSFs.append({})
-          SKIP = 1
-          continue
-
-  CSFs.pop(-1)
-
+      if int(line.split()[3]) == CSFs_l[0]:
+        CSFs[CSFs_l[0]] = [int(x) for x in flines[i+1].split()[0]]
+        CSFs_l.pop(0)
+        if len(CSFs_l)==0:
+          break
+      
   fname.close()
   
-  spinz = []
-  for s in spin:
-    spinz.append([s-1-2*x for x in range(s)]) 
-   
-  state_num = 0
-  for CI_i in range(NUMCI):
-    for i in range(len(state_energies[CI_i])):
-      for ms in spinz[CI_i]:
-        ci[CI_i].append(CIinfo(method="guga"))
-        ci[CI_i][-1].info = copy(general_information)
-        ci[CI_i][-1].info["state"] = state_num
-        state_num += 1
-        ci[CI_i][-1].info["energy"] = state_energies[CI_i][i]
-        ci[CI_i][-1].info["spin"] = spin[CI_i]
-        ci[CI_i][-1].info["ms"] = ms/2
-        ci[CI_i][-1].info["nel"] = nel[CI_i]
-        ci[CI_i][-1].info["occ_info"] = [NCORE[CI_i],NACT[CI_i],NFZV[CI_i]]
-        for j,csfi in enumerate(state_CSFs[CI_i][i]):
-          CGCs, OCCs = CV_to_dets(CSFs[CI_i][csfi], NCORE[CI_i], NDOC[CI_i], NALP[CI_i], NVAL[CI_i], ms)
-          for k in range(len(CGCs)):
-            ci[CI_i][-1].coeffs.append(state_coeffs[CI_i][i][j]*CGCs[k])
-            ci[CI_i][-1].occ.append(OCCs[k])
-        ci[CI_i][-1].coeffs = numpy.array(ci[CI_i][-1].coeffs)
-        ci[CI_i][-1].occ = numpy.array(ci[CI_i][-1].occ)
-    
+  for i in range(len(state_energies)):
+    ci[0].append(CIinfo(method="detci"))
+    ci[0][i].info = copy(general_information)
+    ci[0][i].info["state"] = i
+    ci[0][i].info["energy"] = state_energies[i]
+    ci[0][i].info["spin"] = spin
+    ci[0][i].info["nel"] = nel
+    ci[0][i].info["occ_info"] = [NCORE,NACT,NFZV]
+
+    for j,csfi in enumerate(state_CSFs[i]):
+      CGCs, OCCs = CV_to_dets(CSFs[csfi], NCORE, NDOC, NALP, NVAL, MULT)
+      for k in range(len(CGCs)):
+        ci[0][i].coeffs.append(state_coeffs[i][j]*CGCs[k])
+        ci[0][i].occ.append(OCCs[k])
+    ci[0][i].coeffs = numpy.array(ci[0][i].coeffs)
+    ci[0][i].occ = numpy.array(ci[0][i].occ)
+  
   #--- Calculating norm of CI states
   display('\nIn total, %d states have been read.' % sum([len(i) for i in ci]))
   display('Norm of the states:')
   for i in range(len(ci)):
     for j in range(len(ci[i])):
       norm = sum([x*x for x in ci[i][j].coeffs])
-      display('\tState %s (%s,%s):\tNorm = %0.8f (%d Coefficients)' %
-              (ci[i][j].info['state'],ci[i][j].info['spin'],ci[i][j].info['ms'],
+      display('\tState %s (%s):\tNorm = %0.8f (%d Coefficients)' %
+              (ci[i][j].info['state'],ci[i][j].info['spin'],
                norm,len(ci[i][j].coeffs)))
   display('')
   
@@ -391,182 +374,10 @@ def gamess_guga(file_name,threshold=0.0,**kwargs):
     ci_new.extend(i)
   
   return ci_new
-
-
-def gamess_MOD(file_name,threshold=0.0,**kwargs):
-  '''Reads GAMESS-US GUGA output.
-
-  **Parameters:**
-
-    file_name: str, file descriptor
-      Specifies the filename for the input file.
-      fname can also be used with a file descriptor instad of a filename.
-    threshold : float, optional
-      Specifies a read threshold for the CI coefficients.
-
-  **Returns:**
-
-    ci : list of CIinfo class instances
-      See :ref:`Central Variables` for details.
-  '''
-  display('\nReading data of GUGA calculation from GAMESS-US...')
-
-  ci = [[]]
-  general_information = {'fileinfo': file_name,
-                         'read_threshold': threshold}
-
-
-  fname = open(file_name, 'r')
-
-
-  from io import TextIOWrapper
-  if isinstance(fname, TextIOWrapper):
-    flines = fname.readlines()
-
-  STATE_ZONE=False
-  state_energies = []
-  state_CSFs = []
-  state_coeffs = []
-  state_OCCs = []
-  state_CVs = []
-
-  NUMCI = 0
-  NFZC = []
-  NMCC = []
-  NDOC = []
-  NAOS = []
-  NBOS = []
-  NALP = []
-  NVAL = []
-  NEXT = []
-  NFZV = []
-  NACT = []
-  NCORE = []
-  nel = []
-  spin = []
-  cv_order = []
-
-  for i,line in enumerate(flines):
-    if "THE WAVEFUNCTION CONTAINS" in line:
-      cv_order_i = flines[i+1].split() ### CHANGE TO ONE
-      cv_order.append( [int(j) for j in cv_order_i[:NACT[-1]] if j != "0"]) 
-
-    if " STATE #    1" in line:
-      STATE_ZONE=True
-
-    if STATE_ZONE:
-      thisline = line.split()
-      if " STATE #" in line:
-        state_energies[-1].append(float(thisline[-1]))
-        temp_state_CSFs = []
-        temp_state_OCCs = []
-        temp_state_CVs = []
-        temp_state_coeffs = []
-        continue
-      if len(thisline) == 4 and abs(float(thisline[1])) >= threshold:
-        temp_state_CSFs.append(int(thisline[0]))
-        temp_state_coeffs.append(float(thisline[1]))
-        temp = [int(x) for x in thisline[2]]
-        temp_state_OCCs.append(temp)
-        temp = [int(x) for x in thisline[3]]
-        temp_state_CVs.append(temp)
-        continue
-      if " THE " in line:
-        state_CSFs[-1].append(temp_state_CSFs)
-        state_coeffs[-1].append(temp_state_coeffs)
-        state_OCCs[-1].append(temp_state_OCCs)
-        state_CVs[-1].append(temp_state_CVs)
-        continue
-      if "STEP CPU TIME" in line:
-        STATE_ZONE = False
-        continue
-
-    if "CI CALCULATION" in line:
-      NUMCI += 1
-      ci.append([])
-      state_energies.append([])
-      state_CSFs.append([])
-      state_coeffs.append([])
-      state_OCCs.append([])
-      state_CVs.append([])
-      NFZC.append(int(flines[i+14].split()[1]))
-      NDOC.append(int(flines[i+14].split()[3]))
-      NEXT.append(int(flines[i+14].split()[5]))
-      NMCC.append(int(flines[i+15].split()[1]))
-      NAOS.append(int(flines[i+15].split()[3]))
-      NFZV.append(int(flines[i+15].split()[5]))
-      NBOS.append(int(flines[i+16].split()[1]))
-      NALP.append(int(flines[i+17].split()[1]))
-      NVAL.append(int(flines[i+18].split()[1]))
-      NACT.append(NDOC[-1]+NAOS[-1]+NBOS[-1]+NALP[-1]+NVAL[-1]+NEXT[-1])
-      NCORE.append(NMCC[-1]+NFZC[-1])
-      nel.append( 2*(NFZC[-1]+NDOC[-1]+NMCC[-1]) + 1*(NAOS[-1]+NBOS[-1]+NALP[-1]))
-      spin.append( 1 + NALP[-1] )
-      continue
-
-  fname.close()
-
-  NCORE = [sum(i) for i in zip(*[NFZC,NMCC])]
-  NACT = [sum(i) for i in zip(*[NDOC,NAOS,NBOS,NALP,NVAL,NEXT])]
-
-  spinz = []
-  for s in spin:
-    spinz.append([s-1-2*x for x in range(s)])
-
-  CSFs = []
-
-  for i,drt in enumerate(state_CSFs):
-    C = {}
-    for j,s in enumerate(drt):
-      for k,c in enumerate(s):  
-        C[state_CSFs[i][j][k]] = state_CVs[i][j][k]
-    CSFs.append(C)
-
-
-  state_num = 0
-  for CI_i in range(NUMCI):
-    print(cv_order[CI_i]) #ZS
-    for i in range(len(state_energies[CI_i])):
-      for ms in spinz[CI_i]:
-        ci[CI_i].append(CIinfo(method="guga"))
-        ci[CI_i][-1].info = copy(general_information)
-        ci[CI_i][-1].info["state"] = state_num
-        state_num += 1
-        ci[CI_i][-1].info["energy"] = state_energies[CI_i][i]
-        ci[CI_i][-1].info["spin"] = spin[CI_i]
-        ci[CI_i][-1].info["ms"] = ms/2
-        ci[CI_i][-1].info["nel"] = nel[CI_i]
-        ci[CI_i][-1].info["occ_info"] = [NCORE[CI_i],NACT[CI_i],NFZV[CI_i]]
-        for j,csfi in enumerate(state_CSFs[CI_i][i]):
-          CGCs, OCCs = CV_to_dets_MOD(CSFs[CI_i][csfi], ms, cv_order[CI_i], NCORE[CI_i], NCORE[CI_i]+NACT[CI_i])
-          for k in range(len(CGCs)):
-            ci[CI_i][-1].coeffs.append(state_coeffs[CI_i][i][j]*CGCs[k])
-            ci[CI_i][-1].occ.append(OCCs[k])
-        ci[CI_i][-1].coeffs = numpy.array(ci[CI_i][-1].coeffs)
-        ci[CI_i][-1].occ = numpy.array(ci[CI_i][-1].occ)
-
-    #--- Calculating norm of CI states
-  display('\nIn total, %d states have been read.' % sum([len(i) for i in ci]))
-  display('Norm of the states:')
-  for i in range(len(ci)):
-    for j in range(len(ci[i])):
-      norm = sum([x*x for x in ci[i][j].coeffs])
-      display('\tState %s (%s,%s):\tNorm = %0.8f (%d Coefficients)' %
-              (ci[i][j].info['state'],ci[i][j].info['spin'],ci[i][j].info['ms'],
-               norm,len(ci[i][j].coeffs)))
-  display('')
-
-  ci_new = []
-  for i in ci:
-    ci_new.extend(i)
-
-  return ci_new
-
  
-def CV_to_dets(CV, NCORE, NDOC, NALP, NVAL, MS):
+def CV_to_dets(CV, NCORE, NDOC, NALP, NVAL, MULT):
     """
     Turn Case Vector into Determinants and Coefficients
-    Not coded for NAOS or NBOS, can be adjusted
     GAMESS Case Vector ascends through unoccupied, descends through doubly occupied, the descends through singly occupied
     1 unoccupied
     2 single, raises total spin
@@ -586,13 +397,13 @@ def CV_to_dets(CV, NCORE, NDOC, NALP, NVAL, MS):
         if c == 1:
             continue
         if c == 2:
-            IB += 1 
+            IB -= 1 
             NOPEN += 1
             s.append(1)
             continue
 
         if c == 3:
-            IB -= 1
+            IB += 1
             NOPEN += 1
             s.append(-1)
             continue 
@@ -602,7 +413,7 @@ def CV_to_dets(CV, NCORE, NDOC, NALP, NVAL, MS):
                 NPHASE *= -1 # Enforce Antisymmetry under Exchange?
             continue
             
-    s_z, CGCs, iCGCs = SPNFNC(NOPEN, s, MS) # Have to go through all Ms when relativistic
+    s_z, CGCs, iCGCs = SPNFNC(NOPEN, s, MULT-1) # Have to go through all Ms when relativistic
     
     CGCs = [NPHASE*x for x in CGCs]
     iCGCs = [NPHASE*x for x in iCGCs]
@@ -618,65 +429,6 @@ def CV_to_dets(CV, NCORE, NDOC, NALP, NVAL, MS):
                 occupation[abs(orb)-NCORE-1,1] = 1
         OCCs.append(occupation)
     
-    return CGCs, OCCs
-
-def CV_to_dets_MOD(CV, MS, IORDER, NCORE, NOCC):
-    """
-    Turn Case Vector into Determinants and Coefficients
-    CV is the gamess unique case vector for CSF identification
-    MS is the total spin projection, multiplied by 2
-    IORDER is a list that says what MOs the elements of the case vector refer to
-    NCORE is the number of core orbitals (always occupied)
-    NOCC is the number of possibly occupied orbitals
-
-    Not coded for NAOS or NBOS, can be adjusted
-    GAMESS Case Vector ascends through unoccupied, descends through doubly occupied, the descends through singly occup
-    1 unoccupied
-    2 single, raises total spin
-    3 single, lowers total spin
-    4 is doubly occupied ( necessarily singlet, see Szabo Ex. 2.38 )
-    """
-
-    NPHASE = 1
-    IB = 0
-    NOPEN = 0
-    s = [] # Says if electron raises or lowers total spin (left to right)
-    
-    for c in CV:
-        if c == 1:
-            continue
-        if c == 2:
-            IB += 1
-            NOPEN += 1
-            s.append(1)
-            continue
-
-        if c == 3:
-            IB -= 1
-            NOPEN += 1
-            s.append(-1)
-            continue
-
-        if c == 4:
-            if IB%2:
-                NPHASE *= -1 # Enforce Antisymmetry under Exchange?
-            continue
-    s_z, CGCs, iCGCs = SPNFNC(NOPEN, s, MS) # Have to go through all Ms when relativistic
-
-    CGCs = [NPHASE*x for x in CGCs]
-    iCGCs = [NPHASE*x for x in iCGCs]
-    OCCs = []
-
-    for i,sz in enumerate(s_z):
-        DET = MAKDET(CV, IORDER, sz)
-        occupation = numpy.zeros((NOCC-NCORE,2),dtype=numpy.intc)
-        for orb in DET:
-            if orb > 0:
-                occupation[orb-NCORE-1,0] = 1
-            elif orb < 0:
-                occupation[abs(orb)-NCORE-1,1] = 1
-        OCCs.append(occupation)
-
     return CGCs, OCCs
         
         
@@ -713,7 +465,6 @@ def SPNFNC(NOPEN, s=[0], Ms=0):
             if abs(S_z[pop_ind][j]) > S[j]: # Exclude determinants with non-allowed total spin couplings
                 S_z.pop(pop_ind)
                 s_z.pop(pop_ind)
-                pop_ind -= 1
                 break
         pop_ind += 1
     
@@ -733,13 +484,9 @@ def SPNFNC(NOPEN, s=[0], Ms=0):
                 COEF /= 2*S[j]
             else:
                 if s_z[i][j] == 1:
-                    COEF *= (S[j]-S_z[i][j]+2)
-                    if S[j]%2 == 0:
-                        COEF *= -1
+                    COEF *= -1*(S[j]-S_z[i][j]+2)
                 else:
                     COEF *= (S[j]+S_z[i][j]+2)
-                    if S[j]%2 == 1:
-                        COEF *= -1
                 COEF /= (2*S[j] + 4)
         if COEF == 0:
             continue

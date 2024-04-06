@@ -185,3 +185,152 @@ def mcscf_ab(int i,int j,
   if warning < 0:
     print('Electron number mismatch between selected states!')
   return zero,singles
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def mcscf_ab_sp(int i,int j,
+               np.ndarray[double, ndim=1, mode="c"] acoeffs not None,
+               np.ndarray[int, ndim=3, mode="c"] aocc not None,
+               np.ndarray[double, ndim=1, mode="c"] bcoeffs not None,
+               np.ndarray[int, ndim=3, mode="c"] bocc not None,
+               np.ndarray[int, ndim=1, mode="c"] moocc not None,
+               int ab_sorting):
+  '''Sorting of alpha and beta strings:
+  if ab_sorting: Alternating alpha and beta orbitals (MOLPRO style of orbital sorting)
+  else:          First alpha than beta orbitals (PSI4 style of orbital sorting)
+  '''
+  # Initialize the variables
+  cdef double citmp = 0.0
+  cdef int ia,ib,im,occ,itmp,jtmp,nflips
+  cdef int nbcoeffs = bcoeffs.shape[0]
+  cdef int nmoocc = moocc.shape[0] #: Number of core orbitals
+  cdef int nactive = aocc.shape[1] #: Number of active orbitals
+  cdef int alpha,beta
+  cdef int warning = 0
+  cdef int am,ap #: creation, annihilation 
+  zero = []     #: Identical Slater-determinants
+  zc = []       #: Prefactor (occupation * CI coefficient)
+  zm = []       #: Indices of occupied orbitals
+  singles = []  #: Effective single excitation
+  sc = []       #: Product of CI coefficients
+  sm = []       #: Indices of the two molecular orbitals
+  zero_a = []     #: Identical Slater-determinants (alpha)
+  zc_a = []       #: Prefactor (occupation * CI coefficient)
+  zm_a = []       #: Indices of occupied orbitals
+  singles_a = []  #: Effective single excitation (alpha)
+  sc_a = []       #: Product of CI coefficients
+  sm_a = []       #: Indices of the two molecular orbitals
+  zero_b = []     #: Identical Slater-determinants (beta)
+  zc_b = []       #: Prefactor (occupation * CI coefficient)
+  zm_b = []       #: Indices of occupied orbitals
+  singles_b = []  #: Effective single excitation (beta)
+  sc_b = []       #: Product of CI coefficients
+  sm_b = []       #: Indices of the two molecular orbitals 
+
+  for ia in range(i,j):
+    if acoeffs[ia] != 0.0:
+      for ib in range(nbcoeffs):
+        if bcoeffs[ib] != 0.0:
+          alpha = 0
+          beta = 0
+          for im in range(nactive):
+            alpha += abs(aocc[ia,im,0] - bocc[ib,im,0])
+            beta += abs(aocc[ia,im,1] - bocc[ib,im,1])
+
+          if (alpha+beta == 0):
+            si = []
+            zo = []
+            zo_a = []
+            si_a = []
+            zo_b = []
+            si_b = []
+            citmp = acoeffs[ia]*bcoeffs[ib]
+            for im in range(nmoocc):
+              si.append(im)
+              zo.append(moocc[im]*citmp)
+              si_a.append(im)
+              zo_a.append(moocc[im]/2*citmp)
+              si_b.append(im)
+              zo_b.append(moocc[im]/2*citmp)
+            for im in range(nactive):
+              occ = (aocc[ia,im,0]+aocc[ia,im,1])
+              if occ != 0:
+                si.append(nmoocc+im)
+                zo.append(occ*citmp)
+              if aocc[ia,im,0] != 0:
+                si_a.append(nmoocc+im)
+                zo_a.append(citmp)
+              if aocc[ia,im,1] != 0:
+                si_b.append(nmoocc+im)
+                zo_b.append(citmp)
+            zc.append(zo)
+            zm.append(si)
+            zc_a.append(zo_a)
+            zm_a.append(si_a)
+            zc_b.append(zo_b)
+            zm_b.append(si_b)
+
+          elif (alpha == 2 and beta == 0):
+            am = -1
+            ap = -1
+            for im in range(nactive):
+              alpha = aocc[ia,im,0] - bocc[ib,im,0]
+              if alpha == -1: am = im
+              elif alpha == 1: ap = im
+            itmp = min(am,ap)
+            jtmp = max(am,ap)
+            if ab_sorting:
+              nflips = aocc[ia,itmp,1]
+              for im in range(itmp+1,jtmp):
+                nflips += aocc[ia,im,0] + aocc[ia,im,1]
+            else:
+              nflips = 0
+              for im in range(itmp+1,jtmp):
+                nflips += aocc[ia,im,0]
+            sc.append(pow(-1.0,nflips)*acoeffs[ia]*bcoeffs[ib])
+            sm.append([ap+nmoocc, am+nmoocc])
+            sc_a.append(pow(-1.0,nflips)*acoeffs[ia]*bcoeffs[ib])
+            sm_a.append([ap+nmoocc, am+nmoocc])
+            warning = min(min(am,ap),warning)
+
+          elif (beta == 2 and alpha == 0):
+            am = -1
+            ap = -1
+            for im in range(nactive):
+              beta = aocc[ia,im,1] - bocc[ib,im,1]
+              if beta == -1: am = im
+              elif beta == 1: ap = im
+            itmp = min(am,ap)
+            jtmp = max(am,ap)
+            if ab_sorting:
+              nflips = aocc[ia,jtmp,0]
+              for im in range(itmp+1,jtmp):
+                nflips += aocc[ia,im,0] + aocc[ia,im,1]
+            else:
+              nflips = 0
+              for im in range(itmp+1,jtmp):
+                nflips += aocc[ia,im,1]
+            sc.append(pow(-1.0,nflips)*acoeffs[ia]*bcoeffs[ib])
+            sm.append([ap+nmoocc, am+nmoocc])
+            sc_b.append(pow(-1.0,nflips)*acoeffs[ia]*bcoeffs[ib])
+            sm_b.append([ap+nmoocc, am+nmoocc])
+            warning = min(min(am,ap),warning)
+
+  zero.append(zc)
+  zero.append(zm)
+  zero_a.append(zc_a)
+  zero_a.append(zm_a)
+  zero_b.append(zc_b)
+  zero_b.append(zm_b)
+
+  singles.append(sc)
+  singles.append(sm)
+  singles_a.append(sc_a)
+  singles_a.append(sm_a)
+  singles_b.append(sc_b)
+  singles_b.append(sm_b)
+
+  if warning < 0:
+    print('Electron number mismatch between selected states!')
+  return zero,singles,zero_a,singles_a,zero_b,singles_b
+

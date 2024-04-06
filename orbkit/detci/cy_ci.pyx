@@ -96,6 +96,11 @@ def get_rho(int i,int j,
   
   return rho 
 
+# ZS
+# Need occupancy data of MOs, coupled into citmp currently, and I'd rather not seperate it...
+# Otherwise, maybe could just make a new zero and sing... 
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def get_rho_full(np.ndarray[double, ndim=3, mode="c"] ReS not None,

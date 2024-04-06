@@ -9,7 +9,7 @@ from orbkit.units import ev_to_ha
 from .tools import molpro_mo_order_ci
 from .psi4 import psi4_detci
 from .tmol import tmol_escf, tmol_tddft
-from .gamess import gamess_cis, gamess_tddft
+from .gamess import gamess_cis, gamess_tddft, gamess_guga, gamess_MOD
 from .molpro import molpro_mcscf
 from .gaussian import gaussian_tddft
 
@@ -72,6 +72,8 @@ def main_ci_read(qc,fname,itype='psi4_detci',threshold=0.0,
   reader = {'psi4_detci': psi4_detci,
             'gamess_cis': gamess_cis,
             'gamess_tddft': gamess_tddft,
+            'gamess_guga': gamess_guga,
+            'gamess_MOD': gamess_MOD,
             'gaussian_tddft': gaussian_tddft,
             'tmol_tddft': tmol_tddft,
             'molpro_mcscf': molpro_mcscf}
@@ -81,7 +83,7 @@ def main_ci_read(qc,fname,itype='psi4_detci',threshold=0.0,
     display('Available reader (`itype`) are:\n  ' + ', '.join(reader.keys()))
     raise NotImplementedError("itype='%s' not implemented!"%itype)
   
-  kwargs['nmoocc'] = qc.mo_spec.get_lumo()
+  kwargs['nmoocc'] = qc.mo_spec.get_lumo(sort=False) #ZS
   
   ci = reader[itype](fname,select_state=select,threshold=threshold, 
                      select_run=select,                 # PSI4/MOLPRO specific
@@ -102,6 +104,12 @@ def main_ci_read(qc,fname,itype='psi4_detci',threshold=0.0,
     qc.mo_spec = closed+active+external
     qc.mo_spec = MOClass(qc.mo_spec)
     moocc = numpy.zeros(len(closed),dtype=numpy.intc) + 2
+  elif itype in ['gamess_guga','gamess_MOD']: # detCI-like
+    # Reorder qc.mo_spec
+    closed,active,external = ci[0].info['occ_info']
+    #qc.mo_spec = closed+active+external
+    #qc.mo_spec = MOClass(qc.mo_spec)
+    moocc = numpy.zeros(closed,dtype=numpy.intc) + 2
   
   # Add moocc to CI class instances
   for i in ci:
